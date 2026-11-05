@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Inspection Report Comparison: dependency-free collaboration server."""
-import os, json, sqlite3, secrets, hashlib, hmac, time, base64, re, mimetypes
+import os, json, sqlite3, secrets, hashlib, hmac, time, base64, re, mimetypes, io, zipfile, html
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
@@ -39,6 +39,7 @@ def init():
         CREATE TABLE IF NOT EXISTS cases(id TEXT PRIMARY KEY,address TEXT,current TEXT,previous TEXT,junior_id TEXT,cm_id TEXT,status TEXT,version INTEGER DEFAULT 1,items TEXT,return_note TEXT DEFAULT '',updated REAL,FOREIGN KEY(junior_id) REFERENCES users(id),FOREIGN KEY(cm_id) REFERENCES users(id));
         CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY,case_id TEXT,data BLOB,mime TEXT,FOREIGN KEY(case_id) REFERENCES cases(id));
         CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,case_id TEXT,user_id TEXT,event TEXT,detail TEXT,created REAL);
+        CREATE TABLE IF NOT EXISTS archives(token TEXT PRIMARY KEY,case_id TEXT,version INTEGER,sha256 TEXT,created REAL,cleaned REAL,location TEXT);
         CREATE TABLE IF NOT EXISTS attempts(key TEXT PRIMARY KEY,count INTEGER,until REAL);
         ''')
         if not c.execute('SELECT 1 FROM users LIMIT 1').fetchone():
@@ -202,10 +203,75 @@ class Handler(BaseHTTPRequestHandler):
                     if not r:raise APIError(404,'照片不存在')
                     self.case(c,r['case_id'],u)
                     return self.output(200,r['data'],r['mime'])
-                m=re.fullmatch('/api/cases/([^/]+)(?:/(items|assign|transition|media|audit|report))?',p)
+                m=re.fullmatch('/api/cases/([^/]+)(?:/(items|assign|transition|media|audit|report|full-report|archive|cleanup|archive-status))?',p)
                 if m:
                     cid,action=m[1],m[2];r=self.case(c,cid,u)
                     if not action and not mutation:return self.output(200,case_json(r))
+                    if action=='archive-status' and not mutation:
+                        row=c.execute('SELECT * FROM archives WHERE case_id=? ORDER BY created DESC LIMIT 1',(cid,)).fetchone()
+                        return self.output(200,dict(row) if row else {})
+                    if action=='full-report' and mutation:
+                        if u['role'] not in ['cm','admin']:raise APIError(403,'仅CM或管理员可导出内部报告')
+                        self.version(b,r)
+                        if c.execute('SELECT 1 FROM archives WHERE case_id=? AND cleaned IS NOT NULL',(cid,)).fetchone():raise APIError(400,'照片已清理，请查看已保存报告')
+                        d=case_json(r)
+                        token=secrets.token_hex(16)
+                        c.execute('INSERT INTO archives VALUES(?,?,?,?,?,NULL,NULL)',(token,cid,r['version'],'PDF-CONFIRM',time.time()))
+                        audit(c,cid,u['id'],'打开全部问题报告','须人工确认PDF已保存');c.commit();d['archive_token']=token
+                        return self.output(200,d)
+                    if action=='archive' and mutation:
+                        if u['role'] not in ['cm','admin'] or r['status']!='已完成':raise APIError(403,'仅CM或管理员可归档已完成案件')
+                        self.version(b,r)
+                        if c.execute('SELECT 1 FROM archives WHERE case_id=? AND cleaned IS NOT NULL',(cid,)).fetchone():raise APIError(400,'照片已清理，请使用此前保存的完整归档')
+                        token=secrets.token_hex(16);buf=io.BytesIO();case=case_json(r)
+                        events=[dict(x) for x in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON a.user_id=u.id WHERE case_id=? ORDER BY a.id',(cid,))]
+                        media=c.execute('SELECT * FROM media WHERE case_id=?',(cid,)).fetchall()
+                        photo_map={'/api/media/'+m['id']:'photos/'+m['id']+'.jpg' for m in media}
+                        esc=html.escape
+                        text='<!doctype html><meta charset="utf-8"><title>Internal full archive</title><style>body{font:15px system-ui;max-width:1100px;margin:30px auto}article{border-bottom:1px solid #ccc;padding:20px}img{max-width:240px;max-height:220px}p{white-space:pre-wrap}.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}</style><h1>内部完整归档 · '+esc(case['address'])+'</h1><p>包含所有项目和内部信息，请勿作为租客报告发送。</p>'
+                        for n,i in enumerate(case['items'],1):
+                            text+='<article><h2>'+str(n)+'. '+esc(i['area']+' / '+i['item'])+'</h2>'
+                            for k in ['kind','description','finding','junior','decision','cm','amount']:
+                                text+='<p>'+esc(k)+': '+esc(str(i.get(k,'')))+'</p>'
+                            text+='<div class="pair">'
+                            for side in ['after','before']:
+                                text+='<section><h3>'+side+'</h3>'
+                                for url in i[side]:
+                                    if url not in photo_map:raise APIError(400,'照片文件缺失，不能生成完整归档')
+                                    text+='<a href="'+photo_map[url]+'"><img src="'+photo_map[url]+'"></a>'
+                                text+='</section>'
+                            text+='</div></article>'
+                        text+='<h2>操作记录</h2>'+''.join('<p>'+esc(str(e['created'])+' '+str(e.get('name',''))+' '+e['event']+' '+e['detail'])+'</p>' for e in events)
+                        with zipfile.ZipFile(buf,'w',zipfile.ZIP_DEFLATED) as z:
+                            z.writestr('index.html',text)
+                            z.writestr('case.json',json.dumps(case,ensure_ascii=False,indent=2))
+                            z.writestr('audit.json',json.dumps(events,ensure_ascii=False,indent=2))
+                            z.writestr('manifest.json',json.dumps({'case_id':cid,'version':r['version'],'created':time.time(),'photo_count':len(media),'archive_token':token},indent=2))
+                            for m in media:z.writestr(photo_map['/api/media/'+m['id']],m['data'])
+                        raw=buf.getvalue();digest=hashlib.sha256(raw).hexdigest()
+                        c.execute('INSERT INTO archives VALUES(?,?,?,?,?,NULL,NULL)',(token,cid,r['version'],digest,time.time()))
+                        audit(c,cid,u['id'],'生成内部完整归档',digest);c.commit()
+                        return self.output(200,{'zip':base64.b64encode(raw).decode(),'token':token,'sha256':digest,'photos':len(media)})
+                    if action=='cleanup' and mutation:
+                        if u['role']!='admin':raise APIError(403,'仅管理员可清理照片')
+                        self.version(b,r)
+                        receipt=c.execute('SELECT * FROM archives WHERE token=? AND case_id=?',(b.get('token'),cid)).fetchone()
+                        location=str(b.get('location','')).strip()
+                        if r['status']!='已完成' or not receipt or receipt['version']!=r['version'] or receipt['cleaned'] is not None:raise APIError(400,'请为当前已完成版本重新导出归档')
+                        if not location or b.get('confirmed') is not True or (not re.fullmatch('[a-f0-9]{64}',str(b.get('sha256',''))) if receipt['sha256']=='PDF-CONFIRM' else b.get('sha256')!=receipt['sha256']):raise APIError(400,'请确认归档文件已校验并填写保存位置')
+                        items=json.loads(r['items'])
+                        for i in items:
+                            i['archived_photo_counts']={side:len(i[side]) for side in ['before','after']}
+                            i['before']=[];i['after']=[]
+                        count=c.execute('SELECT COUNT(*) FROM media WHERE case_id=?',(cid,)).fetchone()[0]
+                        c.execute('DELETE FROM media WHERE case_id=?',(cid,))
+                        self.bump(c,cid,items=json.dumps(items,ensure_ascii=False))
+                        c.execute('UPDATE archives SET cleaned=?,location=? WHERE token=?',(time.time(),location,receipt['token']))
+                        audit(c,cid,u['id'],'归档后清理照片',json.dumps({'photos':count,'location':location,'sha256':b.get('sha256')},ensure_ascii=False));c.commit()
+                        reclaimed=True
+                        try:c.execute('PRAGMA wal_checkpoint(TRUNCATE)');c.execute('VACUUM');c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                        except sqlite3.Error:reclaimed=False
+                        return self.output(200,{'deleted_photos':count,'space_reclaimed':reclaimed})
                     if action=='audit' and not mutation:
                         return self.output(200,{'events':[dict(x) for x in c.execute('SELECT a.*,u.name FROM audit a LEFT JOIN users u ON a.user_id=u.id WHERE case_id=? ORDER BY a.id DESC LIMIT 200',(cid,))]})
                     if action=='report' and not mutation:
@@ -217,6 +283,7 @@ class Handler(BaseHTTPRequestHandler):
                         d['items']=[{k:v for k,v in i.items() if k not in ['junior','finding']} for i in d['items'] if i['decision']=='租客责任'];return self.output(200,d)
                     if not mutation:raise APIError(404,'接口不存在')
                     self.version(b,r)
+                    if action in ['items','media','transition'] and c.execute('SELECT 1 FROM archives WHERE case_id=? AND cleaned IS NOT NULL',(cid,)).fetchone():raise APIError(400,'此案件已归档清理，保留文字记录供查阅，不可重新编辑；照片请查阅完整归档')
                     if action=='assign':
                         if u['role']!='admin':raise APIError(403,'仅管理员可调整分配')
                         self.assign_valid(c,b)
@@ -246,6 +313,7 @@ class Handler(BaseHTTPRequestHandler):
                     elif action=='transition':
                         target=b.get('target');items=json.loads(r['items'])
                         if target=='待审核':
+                            if u['role']!='junior':raise APIError(403,'仅负责Junior CM可提交CM审核')
                             if r['status'] not in ['草稿','退回补充']:raise APIError(400,'当前状态不能提交')
                             if not items or any(not i['item'].strip() or not i['description'].strip() or not i['after'] for i in items):raise APIError(400,'每个项目须填写设施、问题说明及本次照片')
                         elif target in ['退回补充','已完成','草稿']:
