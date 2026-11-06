@@ -279,7 +279,7 @@ class Handler(BaseHTTPRequestHandler):
                         d=case_json(r)
                         chosen=[i for i in d['items'] if i['decision']=='租客责任']
                         if not chosen:raise APIError(400,'没有已确认租客责任的项目可导出')
-                        if any(not i['before'] or not i['after'] or not i['cm'].strip() for i in chosen):raise APIError(400,'租客责任项目须补齐前后照片及CM对外说明后导出')
+                        if any(not i['after'] or not i['cm'].strip() for i in chosen):raise APIError(400,'租客责任项目须补齐本次照片及CM对外说明后导出')
                         d['items']=[{k:v for k,v in i.items() if k not in ['junior','finding','description','kind','decision']} for i in d['items'] if i['decision']=='租客责任'];return self.output(200,d)
                     if not mutation:raise APIError(404,'接口不存在')
                     self.version(b,r)
@@ -295,10 +295,10 @@ class Handler(BaseHTTPRequestHandler):
                         items=self.validate_items(c,cid,b.get('items'))
                         old={i['id']:i for i in json.loads(r['items'])}
                         if u['role']=='junior':
-                            protected=['decision','cm','amount']
+                            protected=['decision','cm','amount','cm_choice','cm_note']
                             for i in items:
                                 prev=old.get(i['id'],{})
-                                if any(i.get(k)!=prev.get(k,{'decision':'待审核','cm':'','amount':''}[k]) for k in protected):raise APIError(403,'Junior不可修改CM审核字段')
+                                if any(i.get(k,'')!=prev.get(k,{'decision':'待审核','cm':'','amount':'','cm_choice':'','cm_note':''}[k]) for k in protected):raise APIError(403,'Junior不可修改CM审核字段')
                             removed=set(old)-{i['id'] for i in items}
                             if any(old[i].get('decision')!='待审核' for i in removed):raise APIError(403,'已审核项目仅CM可删除')
                         self.bump(c,cid,items=json.dumps(items,ensure_ascii=False));audit(c,cid,u['id'],'保存项目',f'{len(items)}个项目')
@@ -315,20 +315,22 @@ class Handler(BaseHTTPRequestHandler):
                         if target=='待审核':
                             if u['role']!='junior':raise APIError(403,'仅负责Junior CM可提交CM审核')
                             if r['status'] not in ['草稿','退回补充']:raise APIError(400,'当前状态不能提交')
-                            if not items or any(not i['item'].strip() or not i['description'].strip() or not i['after'] for i in items):raise APIError(400,'每个项目须填写设施、问题说明及本次照片')
+                            if not items or any(any(not i[k].strip() for k in ['area','item','kind','description','finding']) or not i['after'] for i in items):raise APIError(400,'每个项目须填写设施、问题说明及本次照片')
                         elif target in ['退回补充','已完成','草稿']:
                             if u['role'] not in ['cm','admin']:raise APIError(403,'仅负责CM可审核、退回或重新打开')
                             if target=='退回补充' and (r['status']!='待审核' or not str(b.get('note','')).strip()):raise APIError(400,'待审核案件退回时须填写原因')
                             if target=='已完成':
                                 if r['status']!='待审核' or not items or any(i['decision']=='待审核' for i in items):raise APIError(400,'请逐项审核后完成案件')
                                 for n,i in enumerate(items,1):
+                                    if not i['cm'].strip():raise APIError(400,f'项目{n}（{i["area"]} / {i["item"]}）尚缺：CM对外说明')
                                     if i['decision']=='租客责任':
                                         missing=[]
-                                        if not i['before']:missing.append('之前同位置照片')
                                         if not i['after']:missing.append('本次退租照片')
                                         if not i['cm'].strip():missing.append('CM对外说明')
                                         if missing:raise APIError(400,f'项目{n}（{i["area"]} / {i["item"]}）尚缺：'+ '、'.join(missing))
-                            if target=='草稿' and r['status']!='已完成':raise APIError(400,'仅已完成案件可重新打开')
+                            if target=='草稿':
+                                if r['status']!='已完成':raise APIError(400,'仅已完成案件可重新打开')
+                                target='待审核'
                         else:raise APIError(400,'状态无效')
                         self.bump(c,cid,status=target,return_note=str(b.get('note','')) if target=='退回补充' else '')
                         audit(c,cid,u['id'],'状态变更',r['status']+' → '+target+('：'+str(b.get('note','')) if target=='退回补充' else ''))
