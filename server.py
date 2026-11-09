@@ -280,7 +280,21 @@ class Handler(BaseHTTPRequestHandler):
                         chosen=[i for i in d['items'] if i['decision']=='租客责任']
                         if not chosen:raise APIError(400,'没有已确认租客责任的项目可导出')
                         if any(not i['after'] or not i['cm'].strip() for i in chosen):raise APIError(400,'租客责任项目须补齐本次照片及CM对外说明后导出')
-                        d['items']=[{k:v for k,v in i.items() if k not in ['junior','finding','description','kind','decision']} for i in d['items'] if i['decision']=='租客责任'];return self.output(200,d)
+                        d['items'] = []
+                        for item in chosen:
+                            kind = item['kind'].strip()
+                            if kind in ('清洁', '清洁问题'):
+                                category = '清洁类'
+                            elif kind in ('维修', '维修问题', '损坏', '损坏问题', '无法工作'):
+                                category = '维修／损坏类'
+                            else:
+                                category = '其他类'
+                            d['items'].append({
+                                'report_category': category,
+                                **{k: item[k] for k in ('area', 'item', 'cm', 'amount', 'after', 'before')},
+                                'photo_pairs': item.get('photo_pairs', []),
+                            })
+                        return self.output(200,d)
                     if not mutation:raise APIError(404,'接口不存在')
                     self.version(b,r)
                     if action in ['items','media','transition'] and c.execute('SELECT 1 FROM archives WHERE case_id=? AND cleaned IS NOT NULL',(cid,)).fetchone():raise APIError(400,'此案件已归档清理，保留文字记录供查阅，不可重新编辑；照片请查阅完整归档')

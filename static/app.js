@@ -40,9 +40,31 @@ if(document.getElementById('fullArchive'))document.getElementById('fullArchive')
 if(document.getElementById('report'))document.getElementById('report').onclick=exportReport;
 }
 async function save(){if(current.status==='已完成')return;let saved=await api('cases/'+current.id+'/items',{version:current.version,items:current.items});Object.assign(current,saved)}
-async function exportReport(mode){let full=mode==='full',preview=window.open('','_blank');if(!preview){alert('请允许弹出报告窗口后重试');return}preview.document.write('<p>正在准备报告…</p>');try{await save();let c=await api('cases/'+current.id+(full?'/full-report':'/report'),full?{version:current.version}:undefined);let text='<!doctype html><meta charset="utf-8"><title>'+(full?'全部问题报告':'定损报告')+'</title><style>@page{size:A4;margin:14mm}body{font:14px system-ui;max-width:1000px;margin:25px auto;color:#243d31}article{border-bottom:1px solid #ccc;padding:15px 0}p{white-space:pre-wrap}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.pair img{width:100%;max-height:300px;object-fit:contain}h3{font-size:14px}@media print{.toolbar{display:none}body{margin:0}.pair{break-inside:avoid}}</style><div class="toolbar"><button onclick="window.print()">打印 / 另存为PDF</button></div><h1>'+(full?'全部问题报告（内部）':'定损报告')+'</h1><h2>'+esc(c.address)+'</h2><p>本次：'+esc(c.current)+' · 之前：'+esc(c.previous)+'</p>';
+function groupDamageReportItems(items) {
+    const categories = new Map([
+        ['清洁类', new Map()],
+        ['维修／损坏类', new Map()],
+        ['其他类', new Map()],
+    ]);
+    for (const item of items) {
+        const areas = categories.get(item.report_category) ?? categories.get('其他类');
+        if (!areas.has(item.area)) areas.set(item.area, []);
+        areas.get(item.area).push(item);
+    }
+    return [...categories].filter(([, areas]) => areas.size > 0);
+}
+
+async function exportReport(mode){let full=mode==='full',preview=window.open('','_blank');if(!preview){alert('请允许弹出报告窗口后重试');return}preview.document.write('<p>正在准备报告…</p>');try{await save();let c=await api('cases/'+current.id+(full?'/full-report':'/report'),full?{version:current.version}:undefined);let text='<!doctype html><meta charset="utf-8"><title>'+(full?'全部问题报告':'定损报告')+'</title><style>@page{size:A4;margin:14mm}body{font:14px system-ui;max-width:1000px;margin:25px auto;color:#243d31}article{border-bottom:1px solid #ccc;padding:15px 0}p{white-space:pre-wrap}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.pair img{width:100%;max-height:300px;object-fit:contain}h3{font-size:14px}.report-category{background:#edf4ef;padding:8px 12px;border-left:4px solid #2e6f56}.report-area{font-size:16px;border-bottom:1px solid #cbdad1;padding-bottom:5px}article h4{margin:0 0 8px;font-size:14px}.report-category,.report-area,article h4{break-after:avoid}@media print{.toolbar{display:none}body{margin:0}.pair{break-inside:avoid}}</style><div class="toolbar"><button onclick="window.print()">打印 / 另存为PDF</button></div><h1>'+(full?'全部问题报告（内部）':'定损报告')+'</h1><h2>'+esc(c.address)+'</h2><p>本次：'+esc(c.current)+' · 之前：'+esc(c.previous)+'</p>';
 async function photo(url){let r=await fetch(url);if(!r.ok)throw Error('照片加载失败，不能生成完整报告');let blob=await r.blob();return await new Promise((resolve,reject)=>{let reader=new FileReader();reader.onload=()=>resolve('<img src="'+reader.result+'">');reader.onerror=reject;reader.readAsDataURL(blob)})}
-for(let i of c.items){text+='<article><h2>'+esc(i.area+' / '+i.item)+'</h2>';if(full)text+='<p>'+esc(i.description)+'</p>';if(full)text+='<p>类型：'+esc(i.kind)+' · 比对结论：'+esc(i.finding)+' · 审核决定：'+esc(i.decision)+'</p><p>'+esc(i.junior)+'</p>';text+='<p>'+esc(i.cm)+'</p><p>'+esc(i.amount?'AUD '+i.amount:'')+'</p>';let pairs=i.photo_pairs||[],usedAfter=new Set(),usedBefore=new Set();for(let pair of pairs){if(!i.after.includes(pair.after)||!i.before.includes(pair.before))continue;usedAfter.add(pair.after);usedBefore.add(pair.before);text+='<div class="pair"><section><h3>本次 · 已配对角度</h3>'+await photo(pair.after)+'</section><section><h3>之前 · 已配对角度</h3>'+await photo(pair.before)+'</section></div>'}text+='<div class="pair">';for(let side of ['after','before']){text+='<section><h3>'+(side==='after'?'本次其他照片':'之前其他照片')+'</h3>';if(!i[side].length)text+='<p>未提供'+(side==='before'?'之前同位置':'本次')+'照片</p>';for(let url of i[side])if(!(side==='after'?usedAfter:usedBefore).has(url))text+=await photo(url);text+='</section>'}text+='</div></article>'}if(full){text+='<p>归档编号：'+esc(c.archive_token)+' · 案件版本：'+c.version+'</p>'}preview.document.open();preview.document.write(text);preview.document.close();await Promise.all([...preview.document.images].map(img=>img.decode()));preview.focus();preview.print()}catch(e){preview.close();error(e)}}
+const groups = full ? [[null, new Map([[null, c.items]])]] : groupDamageReportItems(c.items);
+for (const [category, areas] of groups) {
+    if (category) text += '<h2 class="report-category">'+esc(category)+'</h2>';
+    for (const [area, items] of areas) {
+        if (area !== null) text += '<h3 class="report-area">'+esc(area)+'</h3>';
+        for(let i of items){text+='<article>'+(full?'<h2>'+esc(i.area+' / '+i.item)+'</h2>':'<h4>'+esc(i.item)+'</h4>');if(full)text+='<p>'+esc(i.description)+'</p>';if(full)text+='<p>类型：'+esc(i.kind)+' · 比对结论：'+esc(i.finding)+' · 审核决定：'+esc(i.decision)+'</p><p>'+esc(i.junior)+'</p>';text+='<p>'+esc(i.cm)+'</p><p>'+esc(i.amount?'AUD '+i.amount:'')+'</p>';let pairs=i.photo_pairs||[],usedAfter=new Set(),usedBefore=new Set();for(let pair of pairs){if(!i.after.includes(pair.after)||!i.before.includes(pair.before))continue;usedAfter.add(pair.after);usedBefore.add(pair.before);text+='<div class="pair"><section><h3>本次 · 已配对角度</h3>'+await photo(pair.after)+'</section><section><h3>之前 · 已配对角度</h3>'+await photo(pair.before)+'</section></div>'}text+='<div class="pair">';for(let side of ['after','before']){text+='<section><h3>'+(side==='after'?'本次其他照片':'之前其他照片')+'</h3>';if(!i[side].length)text+='<p>未提供'+(side==='before'?'之前同位置':'本次')+'照片</p>';for(let url of i[side])if(!(side==='after'?usedAfter:usedBefore).has(url))text+=await photo(url);text+='</section>'}text+='</div></article>'}
+    }
+}
+if(full){text+='<p>归档编号：'+esc(c.archive_token)+' · 案件版本：'+c.version+'</p>'}preview.document.open();preview.document.write(text);preview.document.close();await Promise.all([...preview.document.images].map(img=>img.decode()));preview.focus();preview.print()}catch(e){preview.close();error(e)}}
 
 window.onbeforeunload=()=>current&&current.status!=='已完成'?'请确认已保存修改':undefined;
 (async()=>{try{let v=await api('me');user=v.user;csrf=v.csrf;await home()}catch{login()}})();
