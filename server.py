@@ -2,6 +2,7 @@
 """Inspection Report Comparison: dependency-free collaboration server."""
 import os, json, sqlite3, secrets, hashlib, hmac, time, base64, re, mimetypes, io, zipfile, html
 from pathlib import Path
+from datetime import date
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse
@@ -37,6 +38,7 @@ def init():
         CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,name TEXT,email TEXT UNIQUE,role TEXT,password TEXT,active INTEGER DEFAULT 1);
         CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id TEXT,csrf TEXT,expires REAL,FOREIGN KEY(user_id) REFERENCES users(id));
         CREATE TABLE IF NOT EXISTS cases(id TEXT PRIMARY KEY,address TEXT,current TEXT,previous TEXT,junior_id TEXT,cm_id TEXT,status TEXT,version INTEGER DEFAULT 1,items TEXT,return_note TEXT DEFAULT '',updated REAL,FOREIGN KEY(junior_id) REFERENCES users(id),FOREIGN KEY(cm_id) REFERENCES users(id));
+        CREATE TABLE IF NOT EXISTS deleted_cases(case_id TEXT PRIMARY KEY REFERENCES cases(id), deleted_at REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY,case_id TEXT,data BLOB,mime TEXT,FOREIGN KEY(case_id) REFERENCES cases(id));
         CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY,case_id TEXT,user_id TEXT,event TEXT,detail TEXT,created REAL);
         CREATE TABLE IF NOT EXISTS archives(token TEXT PRIMARY KEY,case_id TEXT,version INTEGER,sha256 TEXT,created REAL,cleaned REAL,location TEXT);
@@ -98,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
         if mutation and not hmac.compare_digest(self.headers.get('X-CSRF-Token',''),session['csrf']):raise APIError(403,'安全校验失败，请刷新后重试')
         return u,session
     def case(self,c,cid,u):
-        r=c.execute('SELECT * FROM cases WHERE id=?',(cid,)).fetchone()
+        r=c.execute('SELECT * FROM cases WHERE id=? AND id NOT IN (SELECT case_id FROM deleted_cases)',(cid,)).fetchone()
         if not r or not can_read(u,r):raise APIError(404,'案件不存在或无权访问')
         return r
     def version(self,b,r):
@@ -161,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
                     # Non-admins receive only their own profile and assigned colleagues.
                     if u['role']!='admin':
                         ids={u['id']}
-                        for row in c.execute('SELECT * FROM cases'):
+                        for row in c.execute('SELECT * FROM cases WHERE id NOT IN (SELECT case_id FROM deleted_cases)'):
                             if can_read(u,row):ids.update([row['junior_id'],row['cm_id']])
                         users=[v for v in users if v['id'] in ids or u['role']=='junior' and v['role']=='cm' and v['active']]
                     return self.output(200,{'users':[public_user(v) for v in users]})
@@ -196,14 +198,14 @@ class Handler(BaseHTTPRequestHandler):
                         c.execute('INSERT INTO cases VALUES(?,?,?,?,?,?,?,1,?,?,?)',(cid,addr,b.get('current',''),b.get('previous',''),b['junior_id'],b['cm_id'],'草稿','[]','',time.time()))
                         audit(c,cid,u['id'],'创建并分配',addr);c.commit()
                         return self.output(201,case_json(c.execute('SELECT * FROM cases WHERE id=?',(cid,)).fetchone()))
-                    return self.output(200,{'cases':[case_json(r) for r in c.execute('SELECT * FROM cases ORDER BY updated DESC') if can_read(u,r)]})
+                    return self.output(200,{'cases':[case_json(r) for r in c.execute('SELECT * FROM cases WHERE id NOT IN (SELECT case_id FROM deleted_cases) ORDER BY updated DESC') if can_read(u,r)]})
                 m=re.fullmatch('/api/media/([^/]+)',p)
                 if m and not mutation:
                     r=c.execute('SELECT * FROM media WHERE id=?',(m[1],)).fetchone()
                     if not r:raise APIError(404,'照片不存在')
                     self.case(c,r['case_id'],u)
                     return self.output(200,r['data'],r['mime'])
-                m=re.fullmatch('/api/cases/([^/]+)(?:/(items|assign|transition|media|audit|report|full-report|archive|cleanup|archive-status))?',p)
+                m=re.fullmatch('/api/cases/([^/]+)(?:/(details|delete|items|assign|transition|media|audit|report|full-report|archive|cleanup|archive-status))?',p)
                 if m:
                     cid,action=m[1],m[2];r=self.case(c,cid,u)
                     if not action and not mutation:return self.output(200,case_json(r))
@@ -293,12 +295,50 @@ class Handler(BaseHTTPRequestHandler):
                                 'report_category': category,
                                 **{k: item[k] for k in ('area', 'item', 'cm', 'amount', 'after', 'before')},
                                 'photo_pairs': item.get('photo_pairs', []),
+                                **{key: item.get(key, '') for key in ('item_en', 'cm_en', 'area_en')},
                             })
                         return self.output(200,d)
                     if not mutation:raise APIError(404,'接口不存在')
                     self.version(b,r)
-                    if action in ['items','media','transition'] and c.execute('SELECT 1 FROM archives WHERE case_id=? AND cleaned IS NOT NULL',(cid,)).fetchone():raise APIError(400,'此案件已归档清理，保留文字记录供查阅，不可重新编辑；照片请查阅完整归档')
-                    if action=='assign':
+                    if action in ['details','delete','items','media','transition'] and c.execute('SELECT 1 FROM archives WHERE case_id=? AND cleaned IS NOT NULL',(cid,)).fetchone():raise APIError(400,'此案件已归档清理，保留文字记录供查阅，不可重新编辑；照片请查阅完整归档')
+                    if action == 'details':
+                        junior_editable = u['role'] == 'junior' and r['status'] in ('草稿', '退回补充')
+                        if u['role'] == 'junior' and not junior_editable:
+                            raise APIError(403, '案件已提交，请联系负责CM或管理员修改')
+                        address = b.get('address')
+                        if not isinstance(address, str) or not address.strip():
+                            raise APIError(400, '请填写房源地址')
+                        fields = {'address': address.strip()}
+                        for key, label in [('current', '本次日期'), ('previous', '之前日期')]:
+                            value = b.get(key)
+                            if not isinstance(value, str):
+                                raise APIError(400, f'{label}格式不正确')
+                            if value:
+                                try:
+                                    if date.fromisoformat(value).isoformat() != value:
+                                        raise ValueError
+                                except ValueError:
+                                    raise APIError(400, f'{label}格式不正确')
+                            fields[key] = value
+                        cm_id = b.get('cm_id', r['cm_id'])
+                        if cm_id != r['cm_id']:
+                            if u['role'] != 'admin' and not junior_editable:
+                                raise APIError(403, '请联系管理员重新分配CM')
+                            if not c.execute("SELECT 1 FROM users WHERE id=? AND role='cm' AND active=1", (cm_id,)).fetchone():
+                                raise APIError(400, '请选择在职CM')
+                            fields['cm_id'] = cm_id
+                        self.bump(c, cid, **fields)
+                        audit(c, cid, u['id'], '修改案件基本信息', json.dumps(
+                            {key: {'原值': r[key], '新值': value} for key, value in fields.items() if r[key] != value},
+                            ensure_ascii=False))
+                    elif action == 'delete':
+                        if u['role'] != 'admin' and not (u['role'] == 'junior' and r['status'] == '草稿'):
+                            raise APIError(403, '仅管理员或负责该草稿的Junior CM可删除')
+                        c.execute('INSERT INTO deleted_cases VALUES(?,?)', (cid, time.time()))
+                        audit(c, cid, u['id'], '删除案件', r['address'])
+                        c.commit()
+                        return self.output(200, {'deleted': True})
+                    elif action=='assign':
                         if u['role']!='admin':raise APIError(403,'仅管理员可调整分配')
                         self.assign_valid(c,b)
                         self.bump(c,cid,junior_id=b['junior_id'],cm_id=b['cm_id'])
@@ -309,10 +349,10 @@ class Handler(BaseHTTPRequestHandler):
                         items=self.validate_items(c,cid,b.get('items'))
                         old={i['id']:i for i in json.loads(r['items'])}
                         if u['role']=='junior':
-                            protected=['decision','cm','amount','cm_choice','cm_note']
+                            protected=['decision','cm','amount','cm_choice','cm_note','item_en','area_en','cm_en']
                             for i in items:
                                 prev=old.get(i['id'],{})
-                                if any(i.get(k,'')!=prev.get(k,{'decision':'待审核','cm':'','amount':'','cm_choice':'','cm_note':''}[k]) for k in protected):raise APIError(403,'Junior不可修改CM审核字段')
+                                if any(i.get(k,'')!=prev.get(k,'待审核' if k=='decision' else '') for k in protected):raise APIError(403,'Junior不可修改CM审核字段')
                             removed=set(old)-{i['id'] for i in items}
                             if any(old[i].get('decision')!='待审核' for i in removed):raise APIError(403,'已审核项目仅CM可删除')
                         self.bump(c,cid,items=json.dumps(items,ensure_ascii=False));audit(c,cid,u['id'],'保存项目',f'{len(items)}个项目')
@@ -369,6 +409,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(i.get(k),str) or len(i[k])>10000:raise APIError(400,'项目字段格式不正确')
             if i['decision'] not in DECISIONS:raise APIError(400,'审核决定无效')
             if i['amount'] and (not re.fullmatch(r'\d+(?:\.\d{1,2})?',i['amount']) or float(i['amount'])>10000000):raise APIError(400,'金额须为有效非负金额，最多两位小数')
+            for key in ('item_en', 'area_en', 'cm_en'):
+                value = i.get(key, '')
+                if not isinstance(value, str) or len(value) > 10000:
+                    raise APIError(400, '定损报告英文内容格式不正确')
             for side in ['before','after']:
                 if not isinstance(i.get(side),list) or len(i[side])>50:raise APIError(400,'每侧最多50张照片')
                 for url in i[side]:

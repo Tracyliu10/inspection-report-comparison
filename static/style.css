@@ -24,3 +24,7 @@
 .photo-tile{position:relative;display:grid;gap:4px}.photo-label{font-size:11px;color:#728475}.delete-photo{position:absolute;right:3px;top:3px;padding:3px 7px;font-size:11px;color:#a33c30;background:#fffffff2}.zoom-panel .choose-photo{width:auto;flex:1}.pairing-actions{grid-column:1/-1;border-top:1px solid #ddd;padding-top:8px;font-size:12px}.pairing-actions p{margin:5px 0}
 
 .required{color:#bd3d35}.invalid{border:2px solid #c94438!important;background:#fff1ed!important;box-shadow:0 0 0 3px #c9443818}.review-fields textarea{min-height:70px;margin-top:8px}.issue .field>label{line-height:1.5}
+
+.report-english{margin-top:15px;padding-top:12px;border-top:1px solid #dce7dc}.report-english>summary{cursor:pointer;color:#46685a;font-size:13px}.report-english .grid2{margin-top:10px}
+
+.header-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}.interface-language{width:auto;min-width:108px}.login-language{display:flex;justify-content:flex-end;margin-bottom:12px}.sticky-actions{flex-wrap:wrap}
