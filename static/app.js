@@ -28,7 +28,7 @@ const englishInterface = new Map([
     ['区域问题清单', 'Issues by area'], ['点击区域展开或收起，按区域逐项审核。', 'Expand an area to review its items one by one.'],
     ['尚无问题项目。', 'No issues added yet.'], ['未指定区域', 'Unspecified area'],
     ['已逐项审核', 'All items reviewed'], ['未填写设施', 'Item not specified'], ['未填写', 'Not provided'],
-    ['删除误加项目', 'Remove item'], ['区域', 'Area'], ['设施', 'Item / fixture'],
+    ['删除误加项目', 'Remove item'], ['区域', 'Area'], ['设施', 'Item / fixture'], ['选择查房设施', 'Select a report fixture'],
     ['例如：墙面、抽油烟机', 'e.g. wall or rangehood'],
     ['问题类型', 'Issue type'], ['问题说明', 'Issue description'], ['比对结论', 'Comparison finding'],
     ['简要描述问题，特殊情况可在这里补充', 'Briefly describe the issue and any relevant circumstances'],
@@ -40,16 +40,16 @@ const englishInterface = new Map([
     ['＋ 拖入照片，或点击选择', '+ Drop photos here or click to select'], ['删除', 'Delete'],
     ['CM 审核', 'CM review'], ['审核决定', 'Review decision'], ['CM对外说明', 'CM note for tenant'],
     ['请选择', 'Select an option'], ['租客责任', 'Tenant responsibility'], ['原有问题', 'Pre-existing issue'],
-    ['合理损耗', 'Fair wear and tear'], ['证据不足', 'Insufficient evidence'], ['维修跟进', 'Maintenance follow-up'],
+    ['合理损耗', 'Fair wear and tear'], ['房东责任', 'Landlord responsibility'], ['证据不足', 'Insufficient evidence'], ['维修跟进', 'Maintenance follow-up'],
     ['无须定损', 'No charge required'], ['需向租客核实', 'To be confirmed with the tenant'], ['自然磨损', 'Fair wear and tear'],
     ['请填写其它说明', 'Enter the explanation'], ['其它说明', 'Other explanation'], ['金额 AUD（选填）', 'Amount AUD (optional)'],
-    ['英文定损报告内容（按需填写）', 'English damage report content (as needed)'], ['英文区域', 'Area in English'],
+    ['英文查房报告内容（按需填写）', 'English inspection report content (as needed)'], ['英文区域', 'Area in English'],
     ['原区域已是英文可留空', 'Leave blank if the area is already in English'], ['英文设施名称', 'Item name in English'],
     ['原设施名已是英文可留空', 'Leave blank if the item name is already in English'], ['英文 CM 对外说明', 'CM note for tenant in English'],
     ['固定选项会翻译；自定义中文说明请填写英文版', 'Preset notes are translated automatically. Enter English for custom Chinese notes.'],
     ['＋ 项目', '+ Add item'], ['保存修改', 'Save changes'], ['提交CM审核', 'Submit for CM review'], ['完成审核', 'Complete review'],
     ['重新打开', 'Reopen'], ['撤销上次删除', 'Undo last deletion'], ['自动填充英文', 'Auto-fill English'],
-    ['导出定损报告（PDF）', 'Export damage report (PDF)'],
+    ['导出查房报告（PDF）', 'Export inspection report (PDF)'],
     ['导出全部问题报告（PDF）', 'Export full inspection report (PDF)'], ['归档后清理照片', 'Remove photos after archiving'],
     ['操作记录', 'Activity log'], ['前后照片对照', 'Compare current and previous photos'],
     ['可分别选择照片，使用滑杆放大查看细节。', 'Select each photo separately and use the slider to zoom in.'],
@@ -85,7 +85,7 @@ const englishInterface = new Map([
     ['请选择全部问题PDF、填写保存位置并确认已检查', 'Select the full report PDF, enter its archive location and confirm that you checked it'],
     ['请选择有效PDF文件', 'Select a valid PDF file'], ['请重新导出全部问题报告PDF', 'Export the full inspection report PDF again'],
     ['正在准备翻译…', 'Preparing translation…'], ['正在翻译…', 'Translating…'],
-    ['当前定损项目没有需要自动填充的英文内容。', 'No English translations are missing for the current damage report.'],
+    ['当前定损项目没有需要自动填充的英文内容。', 'No English translations are missing for the current inspection report.'],
     ['此浏览器不支持自动翻译。请使用支持内置翻译的桌面版 Chrome，或手动填写英文。', 'Automatic translation is unavailable in this browser. Use desktop Chrome with built-in translation or enter the English text manually.'],
     ['自动翻译暂不可用。请稍后重试或手动填写英文。', 'Automatic translation is temporarily unavailable. Try again or enter the English text manually.'],
     ['没有可填充的译文。请检查项目或手动填写英文。', 'No translations were filled in. Check the items or enter English manually.'],
@@ -148,7 +148,7 @@ const uiPatterns = [
     [/^请补充以下必填项：\n(.*)$/s, (_, details) => 'Complete these required fields:\n'+details.split('\n').map(translateInterface).join('\n')],
     [/^项目(\d+)（(.*?)）尚缺：(.+)$/, (_, number, item, fields) => 'Item '+number+' ('+item+'): missing '+fields.split('、').map(translateInterface).join(', ')],
     [/^项目 (\d+)（(.*?)）：(.+)$/, (_, number, item, label) => 'Item '+number+' ('+item+'): '+translateInterface(label)],
-    [/^请在以下项目的「英文定损报告内容」中补充翻译：\n(.*)$/s, (_, details) => 'Add translations under “English damage report content” for:\n'+details.replaceAll('英文 CM 对外说明','CM note in English').replaceAll('英文设施名称','item name in English').replaceAll('英文区域','area in English')],
+    [/^请在以下项目的「英文查房报告内容」中补充翻译：\n(.*)$/s, (_, details) => 'Add translations under “English inspection report content” for:\n'+details.replaceAll('英文 CM 对外说明','CM note in English').replaceAll('英文设施名称','item name in English').replaceAll('英文区域','area in English')],
     [/^确定永久清理「(.+?)」全部服务器照片？$/s, (_, address) => 'Permanently remove all stored photos for “'+address+'”?'],
     [/^此案件照片已清理。归档位置：(.*)$/s, (_, location) => 'Case photos were removed. Archive location: '+location],
     [/^已清理 (\d+) 张照片。(.+)$/, (_, count, result) => 'Removed '+count+' photos. '+(result==='数据库空间已回收。'?'Database space was reclaimed.':'Database space can be reclaimed during maintenance.')],
@@ -231,14 +231,52 @@ function newCase(){shell(`<div class="panel"><h2>新增房源并开始比对</h2
 const val=id=>document.getElementById(id).value;
 async function openCase(id){current=await api('cases/'+id);current.archive=await api('cases/'+id+'/archive-status');for(let i of current.items){if(i.decision==='维修跟进')i.decision='待审核';if(i.junior&&i.junior.trim()&&!i.description.includes(i.junior.trim()))i.description+=(i.description?'\n':'')+i.junior.trim();i.junior=''}renderCase()}
 function issueSelect(key,options,i,editable){let value=i[key]||options[0];if(key==='kind')value=({'清洁':'清洁问题','维修':'维修问题','损坏':'损坏问题','其他':'其他问题'})[value]||value;let all=options.includes(value)?options:[value,...options];return `<select data-key="${key}" ${editable?'':'disabled'}>${all.map(v=>`<option ${v===value?'selected':''}>${esc(v)}</option>`).join('')}</select>`}
-function renderCase(){let c=current,canEditDetails=!c.archive?.cleaned&&(user.role!=='junior'||['草稿','退回补充'].includes(c.status)),canDelete=!c.archive?.cleaned&&(user.role==='admin'||user.role==='junior'&&c.status==='草稿'),editable=c.status!=='已完成'&&(user.role!=='junior'||['草稿','退回补充'].includes(c.status));shell(`<div class="case-head"><div><h2 data-user-text>${esc(c.address)}</h2><p>Junior：${name(c.junior_id)} · CM：${name(c.cm_id)} · ${esc(c.status)} · 版本 ${c.version}</p><p class="help">本次日期：${esc(c.current||'未填写')} · 之前日期：${esc(c.previous||'未填写')}</p></div><div class="toolbar">${canEditDetails?'<button id="editCaseDetails">编辑案件信息</button>':''}${canDelete?'<button id="deleteCase" class="danger">删除案件</button>':''}</div></div>${c.archive?.cleaned?`<div class="banner">照片已归档清理 · ${esc(new Date(c.archive.cleaned*1000).toLocaleString())}<br>归档位置：${esc(c.archive.location)}。完整照片请查看已保存归档。</div>`:''}${c.return_note?`<div class="banner warn">退回原因：${esc(c.return_note)}</div>`:''}<div class="notice">保存后再提交。照片会压缩后共享保存；原始证据请另存。未记录问题不自动代表入住时完好。</div><div class="toolbar">${editable?'<button id="addTop" class="primary">＋ 添加比对项目</button>':''}<span class="help">* 为当前步骤必填项；之前同位置照片与金额选填。CM审核字段由CM填写。</span></div>${user.role!=='junior'?'<div class="area-overview"><strong>区域问题清单</strong><p class="help">点击区域展开或收起，按区域逐项审核。</p><div id="areaSummary"></div></div>':''}<div id="issues">${c.items.map((i,n)=>`<article class="issue" data-index="${n}"><div class="issue-head"><h3>项目 ${n+1} · ${esc(i.area)} / ${esc(i.item||'未填写设施')}</h3>${editable?`<button data-delete="${n}" class="right danger">删除误加项目</button>`:''}</div><div class="issue-meta"><div class="field"><label>区域 <span class="required">*</span></label>${issueSelect('area',['General','Entry','Lounge','Dining room','Kitchen','Bedroom 1','Bedroom 2','Bedroom 3','Bedroom 4','Bathroom 1','Bathroom 2','Bathroom 3','Laundry','Balcony','Furniture','Study room','Store room','Hallway','Garage / Car space','Storage cage','Courtyard / Terrace','Other'],i,editable)}</div><div class="field"><label>设施 <span class="required">*</span></label><input data-key="item" value="${esc(i.item)}" placeholder="例如：墙面、抽油烟机" ${editable?'':'disabled'}></div><div class="field"><label>问题类型 <span class="required">*</span></label>${issueSelect('kind',['清洁问题','维修问题','损坏问题','无法工作','其他问题'],i,editable)}</div></div><div class="issue-details"><div class="field"><label>问题说明 <span class="required">*</span></label><textarea rows="2" data-key="description" placeholder="简要描述问题，特殊情况可在这里补充" ${editable?'':'disabled'}>${esc(i.description)}</textarea></div><div class="field"><label>比对结论 <span class="required">*</span></label>${issueSelect('finding',['待核实','之前已有','之前未见','缺少同位置照片','疑似加重'],i,editable)}</div></div><div class="compare">${['after','before'].map(k=>`<div class="photo-side"><h4>${k==='after'?'本次退租照片 <span class="required">*</span>':'之前同位置照片（选填）'}</h4><div class="thumbs">${i[k].map((p,photoIndex)=>`<div class="photo-tile"><button type="button" class="photo-button" data-photo="${n}" data-side="${k}" data-photo-index="${photoIndex}"><img loading="lazy" src="${p}" alt="证据照片 ${photoIndex+1}"></button><span class="photo-label">照片 ${photoIndex+1}</span>${editable?`<button class="delete-photo" type="button" data-delete-photo="${n}" data-side="${k}" data-photo-index="${photoIndex}">删除</button>`:''}</div>`).join('')}</div>${editable?`<label class="drop" data-drop="${k}" data-index="${n}"><span>＋ 拖入照片，或点击选择</span><input type="file" accept="image/*" multiple data-upload="${k}" data-index="${n}"></label>`:''}</div>`).join('')}</div><div class="review"><h4>CM 审核</h4><div class="review-fields"><div class="field review-decision"><label>审核决定 <span class="required">*</span></label><select data-key="decision" ${editable&&user.role!=='junior'?'':'disabled'}>${['待审核','租客责任','原有问题','合理损耗','证据不足'].map(d=>`<option ${d===i.decision?'selected':''}>${d}</option>`).join('')}</select></div><div class="field"><label>CM对外说明 <span class="required">*</span></label><select data-cm-choice ${editable&&user.role!=='junior'?'':'disabled'}><option value="">请选择</option>${['无须定损','需向租客核实','自然磨损','其它'].map(v=>`<option ${cmChoice(i)===v?'selected':''}>${v}</option>`).join('')}</select><textarea data-cm-note rows="2" placeholder="请填写其它说明" style="display:${cmChoice(i)==='其它'?'block':'none'}" ${editable&&user.role!=='junior'?'':'disabled'}>${esc(i.cm_note??(cmChoice(i)==='其它'?i.cm:''))}</textarea></div><div class="field"><label>金额 AUD（选填）</label><input data-key="amount" value="${esc(i.amount)}" ${editable&&user.role!=='junior'?'':'disabled'}></div></div>${user.role!=='junior'?`<details class="report-english"><summary>英文定损报告内容（按需填写）</summary>
+const roomFixtures = ['Doors','Walls','Ceiling','Windows/screens','Blinds/curtains','Fans/light fittings','Floor/floor coverings'];
+const livingFixtures = [...roomFixtures,'TV/Power points','Air conditioner','Furniture'];
+const bathroomFixtures = [...roomFixtures,'Bath','Shower/shower screen','Wash basin/vanity','Mirror/cabinet','Towel rails','Power points','Exhaust fan','Toilet','Cistern'];
+const generalFixtures = ['Smoke alarms','Security devices','Electrical safety switches','Hot water system','Keys/locks/remotes','Staircases/railings','Wheelie & recycle bins','Pool/equipment','Street number/letter box','External walls','Balcony/porch/deck','Awning/gutters','Paving/pergola','Garage/car port/storeroom','Garden shed','Gates/fences','Grounds/garden','External taps/hose','Clothes line','Solar panels','Paths/driveway'];
+const fixturesByArea = new Map([
+    ['Entry',['Doors','Walls','Ceiling','Study room','Store room','Fans/light fittings','Floor/floor coverings','Power points']],
+    ['Lounge',livingFixtures],
+    ['Dining room',livingFixtures],
+    ['Kitchen',['Fridge','Walls','Ceiling','Windows/screens','Blinds/curtains','Fans/light fittings','Floor/floor coverings','Cupboards/drawers','Bench tops/tiling','Sink/disposal unit/taps','Stove top','Oven/griller','Exhaust fan/rangehood','Dishwasher','Power points']],
+    ['Laundry',[...roomFixtures,'Cardboard','Wash tubs','Washing machine/dryer','Power points']],
+    ['General',generalFixtures],
+    ['Overall',['Water Reading','Gas Reading','Power Reading','Keys']],
+    ['Balcony',['Balcony/porch/deck','Floor/floor coverings','Staircases/railings','External walls']],
+    ['Garage / Car space',['Garage/car port/storeroom','Doors','Floor/floor coverings']],
+    ['Furniture',['Furniture']],
+]);
+function fixtureOptions(area) {
+    const fixtures = fixturesByArea.get(area) ||
+        (/^Bedroom [1-4]$/.test(area) ? [...roomFixtures,'Wardrobe/drawers/shelves','Power points','Air conditioner','Furniture'] :
+         /^(Bathroom(?: [1-3])?|Ensuite)$/.test(area) ? bathroomFixtures : roomFixtures);
+    return fixtures.map(fixture => '<option value="'+esc(fixture)+'">'+esc(fixture)+'</option>').join('');
+}
+
+function renderCase(){let c=current,canEditDetails=!c.archive?.cleaned&&(user.role!=='junior'||['草稿','退回补充'].includes(c.status)),canDelete=!c.archive?.cleaned&&(user.role==='admin'||user.role==='junior'&&c.status==='草稿'),editable=c.status!=='已完成'&&(user.role!=='junior'||['草稿','退回补充'].includes(c.status));shell(`<div class="case-head"><div><h2 data-user-text>${esc(c.address)}</h2><p>Junior：${name(c.junior_id)} · CM：${name(c.cm_id)} · ${esc(c.status)} · 版本 ${c.version}</p><p class="help">本次日期：${esc(c.current||'未填写')} · 之前日期：${esc(c.previous||'未填写')}</p></div><div class="toolbar">${canEditDetails?'<button id="editCaseDetails">编辑案件信息</button>':''}${canDelete?'<button id="deleteCase" class="danger">删除案件</button>':''}</div></div>${c.archive?.cleaned?`<div class="banner">照片已归档清理 · ${esc(new Date(c.archive.cleaned*1000).toLocaleString())}<br>归档位置：${esc(c.archive.location)}。完整照片请查看已保存归档。</div>`:''}${c.return_note?`<div class="banner warn">退回原因：${esc(c.return_note)}</div>`:''}<div class="notice">保存后再提交。照片会压缩后共享保存；原始证据请另存。未记录问题不自动代表入住时完好。</div><div class="toolbar">${editable?'<button id="addTop" class="primary">＋ 添加比对项目</button>':''}<span class="help">* 为当前步骤必填项；之前同位置照片与金额选填。CM审核字段由CM填写。</span></div>${user.role!=='junior'?'<div class="area-overview"><strong>区域问题清单</strong><p class="help">点击区域展开或收起，按区域逐项审核。</p><div id="areaSummary"></div></div>':''}<div id="issues">${c.items.map((i,n)=>`<article class="issue" data-index="${n}"><div class="issue-head"><h3>项目 ${n+1} · ${esc(i.area)} / ${esc(i.item||'未填写设施')}</h3>${editable?`<button data-delete="${n}" class="right danger">删除误加项目</button>`:''}</div><div class="issue-meta"><div class="field"><label>区域 <span class="required">*</span></label>${issueSelect('area',['General','Overall','Entry','Lounge','Dining room','Kitchen','Bedroom 1','Bedroom 2','Bedroom 3','Bedroom 4','Bathroom 1','Bathroom 2','Bathroom 3','Laundry','Balcony','Furniture','Study room','Store room','Hallway','Garage / Car space','Storage cage','Courtyard / Terrace','Other'],i,editable)}</div><div class="field"><label>设施 <span class="required">*</span></label><input data-key="item" value="${esc(i.item)}" placeholder="例如：墙面、抽油烟机" ${editable?'':'disabled'}>${editable?`<select data-fixture-picker aria-label="选择查房设施"><option value="">选择查房设施</option>${fixtureOptions(i.area)}</select>`:''}</div><div class="field"><label>问题类型 <span class="required">*</span></label>${issueSelect('kind',['清洁问题','维修问题','损坏问题','无法工作','其他问题'],i,editable)}</div></div><div class="issue-details"><div class="field"><label>问题说明 <span class="required">*</span></label><textarea rows="2" data-key="description" placeholder="简要描述问题，特殊情况可在这里补充" ${editable?'':'disabled'}>${esc(i.description)}</textarea></div><div class="field"><label>比对结论 <span class="required">*</span></label>${issueSelect('finding',['待核实','之前已有','之前未见','缺少同位置照片','疑似加重'],i,editable)}</div></div><div class="compare">${['after','before'].map(k=>`<div class="photo-side"><h4>${k==='after'?'本次退租照片 <span class="required">*</span>':'之前同位置照片（选填）'}</h4><div class="thumbs">${i[k].map((p,photoIndex)=>`<div class="photo-tile"><button type="button" class="photo-button" data-photo="${n}" data-side="${k}" data-photo-index="${photoIndex}"><img loading="lazy" src="${p}" alt="证据照片 ${photoIndex+1}"></button><span class="photo-label">照片 ${photoIndex+1}</span>${editable?`<button class="delete-photo" type="button" data-delete-photo="${n}" data-side="${k}" data-photo-index="${photoIndex}">删除</button>`:''}</div>`).join('')}</div>${editable?`<label class="drop" data-drop="${k}" data-index="${n}"><span>＋ 拖入照片，或点击选择</span><input type="file" accept="image/*" multiple data-upload="${k}" data-index="${n}"></label>`:''}</div>`).join('')}</div><div class="review"><h4>CM 审核</h4><div class="review-fields"><div class="field review-decision"><label>审核决定 <span class="required">*</span></label><select data-key="decision" ${editable&&user.role!=='junior'?'':'disabled'}>${['待审核','租客责任','原有问题','合理损耗','房东责任','证据不足'].map(d=>`<option ${d===i.decision?'selected':''}>${d}</option>`).join('')}</select></div><div class="field"><label>CM对外说明 <span class="required">*</span></label><select data-cm-choice ${editable&&user.role!=='junior'?'':'disabled'}><option value="">请选择</option>${['无须定损','需向租客核实','自然磨损','其它'].map(v=>`<option ${cmChoice(i)===v?'selected':''}>${v}</option>`).join('')}</select><textarea data-cm-note rows="2" placeholder="请填写其它说明" style="display:${cmChoice(i)==='其它'?'block':'none'}" ${editable&&user.role!=='junior'?'':'disabled'}>${esc(i.cm_note??(cmChoice(i)==='其它'?i.cm:''))}</textarea></div><div class="field"><label>金额 AUD（选填）</label><input data-key="amount" value="${esc(i.amount)}" ${editable&&user.role!=='junior'?'':'disabled'}></div></div>${user.role!=='junior'?`<details class="report-english"><summary>英文查房报告内容（按需填写）</summary>
 <div class="grid2"><div class="field"><label>英文区域</label><input data-key="area_en" placeholder="原区域已是英文可留空" value="${esc(i.area_en)}" ${editable?'':'disabled'}></div>
 <div class="field"><label>英文设施名称</label><input data-key="item_en" placeholder="原设施名已是英文可留空" value="${esc(i.item_en)}" ${editable?'':'disabled'}></div></div>
 <div class="field"><label>英文 CM 对外说明</label><textarea rows="2" data-key="cm_en" placeholder="固定选项会翻译；自定义中文说明请填写英文版" ${editable?'':'disabled'}>${esc(i.cm_en)}</textarea></div>
-</details>`:''}</div></article>`).join('')}</div><div class="sticky-actions">${editable?'<button id="add">＋ 项目</button><button id="save" class="primary">保存修改</button>':''}${user.role==='junior'&&['草稿','退回补充'].includes(c.status)?'<button data-state="待审核">提交CM审核</button>':''}${user.role!=='junior'&&c.status==='待审核'?'<button data-state="退回补充">退回补充</button><button data-state="已完成" class="primary">完成审核</button>':''}${user.role!=='junior'&&c.status==='已完成'?'<button data-state="草稿">重新打开</button>':''}${deletedItem&&deletedItem.caseId===c.id&&editable?'<button id="undo">撤销上次删除</button>':''}${editable&&user.role!=='junior'?'<button id="translateReportEn">自动填充英文</button>':''}${user.role!=='junior'?'<button id="report" class="primary">导出定损报告（PDF）</button>':''}${user.role!=='junior'?'<button id="fullArchive">导出全部问题报告（PDF）</button>':''}${user.role==='admin'&&c.status==='已完成'?'<button id="cleanup" class="danger">归档后清理照片</button>':''}<button id="audit">操作记录</button></div>`);
+</details>`:''}</div></article>`).join('')}</div><div class="sticky-actions">${editable?'<button id="add">＋ 项目</button><button id="save" class="primary">保存修改</button>':''}${user.role==='junior'&&['草稿','退回补充'].includes(c.status)?'<button data-state="待审核">提交CM审核</button>':''}${user.role!=='junior'&&c.status==='待审核'?'<button data-state="退回补充">退回补充</button><button data-state="已完成" class="primary">完成审核</button>':''}${user.role!=='junior'&&c.status==='已完成'?'<button data-state="草稿">重新打开</button>':''}${deletedItem&&deletedItem.caseId===c.id&&editable?'<button id="undo">撤销上次删除</button>':''}${editable&&user.role!=='junior'?'<button id="translateReportEn">自动填充英文</button>':''}${user.role!=='junior'?'<button id="report" class="primary">导出查房报告（PDF）</button>':''}${user.role!=='junior'?'<button id="fullArchive">导出全部问题报告（PDF）</button>':''}${user.role==='admin'&&c.status==='已完成'?'<button id="cleanup" class="danger">归档后清理照片</button>':''}<button id="audit">操作记录</button></div>`);
 if (canEditDetails) document.getElementById('editCaseDetails').onclick = () => editCaseDetails(c);
 if (canDelete) document.getElementById('deleteCase').onclick = () => deleteCase(c);
 if(user.role!=='junior')groupIssues(c);
+app.querySelectorAll('[data-fixture-picker]').forEach(picker => {
+    const issue = picker.closest('.issue');
+    const input = issue.querySelector('[data-key="item"]');
+    const area = issue.querySelector('[data-key="area"]');
+    area.addEventListener('change', () => {
+        picker.innerHTML = '<option value="">选择查房设施</option>'+fixtureOptions(area.value);
+    });
+    picker.onchange = () => {
+        if (!picker.value) return;
+        input.value = picker.value;
+        input.oninput();
+        picker.value = '';
+    };
+});
+
 app.querySelectorAll('[data-cm-choice]').forEach(el=>{let article=el.closest('.issue'),n=+article.dataset.index,note=article.querySelector('[data-cm-note]');function update(){let i=current.items[n];i.cm_choice=el.value;i.cm_note=note.value;i.cm=el.value==='其它'?note.value:el.value;note.style.display=el.value==='其它'?'block':'none';el.classList.remove('invalid');note.classList.remove('invalid')}el.onchange=update;note.oninput=update});
 app.querySelectorAll('[data-key]').forEach(el=>el.oninput=()=>{let n=el.closest('[data-index]').dataset.index;c.items[n][el.dataset.key]=el.value;el.classList.remove('invalid')});
 if(editable){document.getElementById('add').onclick=()=>{c.items.push({id:crypto.randomUUID(),area:'Entry',item:'',kind:'清洁问题',description:'',finding:'待核实',junior:'',before:[],after:[],decision:'待审核',cm:'',amount:''});renderCase()};if(document.getElementById('addTop'))document.getElementById('addTop').onclick=()=>document.getElementById('add').click();document.getElementById('save').onclick=()=>save().then(()=>uiAlert('已共享保存')).catch(error)}
@@ -346,7 +384,7 @@ async function translateReportEnglish(record, button) {
             input.oninput();
             filled++;
         }
-        uiAlert(filled ? '已填充 '+filled+' 处英文。请在「英文定损报告内容」中校对，再保存或导出。'
+        uiAlert(filled ? '已填充 '+filled+' 处英文。请在「英文查房报告内容」中校对，再保存或导出。'
                      : '没有可填充的译文。请检查项目或手动填写英文。');
     } catch (err) {
         if (current === record) uiAlert('自动翻译暂不可用。请稍后重试或手动填写英文。');
@@ -372,7 +410,7 @@ function englishReportItems(items) {
         return {...item, area, item: name, cm: note};
     });
     if (missing.length) {
-        throw Error('请在以下项目的「英文定损报告内容」中补充翻译：\n'+missing.join('\n'));
+        throw Error('请在以下项目的「英文查房报告内容」中补充翻译：\n'+missing.join('\n'));
     }
     return translated;
 }
@@ -387,7 +425,7 @@ async function exportReport(mode) {
         await save();
         const record = await api('cases/'+current.id+(full?'/full-report':'/report'), full?{version:current.version}:undefined);
         const items = english && !full ? englishReportItems(record.items) : record.items;
-        const title = full ? (english ? 'Full Inspection Report (Internal)' : '全部问题报告（内部）') : english ? 'Inspection Damage Report' : '定损报告';
+        const title = full ? (english ? 'Full Inspection Report (Internal)' : '全部问题报告（内部）') : english ? 'Inspection Report' : '查房报告';
         const labels = english
             ? {current:'Current inspection', previous:'Previous inspection', currentPair:'Current · matched angle', previousPair:'Previous · matched angle', currentOther:'Other current photos', previousOther:'Other previous photos', noCurrent:'No current photo provided', noPrevious:'No previous photo of the same location provided', print:'Print / Save as PDF'}
             : {current:'本次', previous:'之前', currentPair:'本次 · 已配对角度', previousPair:'之前 · 已配对角度', currentOther:'本次其他照片', previousOther:'之前其他照片', noCurrent:'未提供本次照片', noPrevious:'未提供之前同位置照片', print:'打印 / 另存为PDF'};

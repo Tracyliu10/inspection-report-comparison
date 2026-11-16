@@ -12,7 +12,7 @@ DATA = Path(os.environ.get('IRC_DATA_DIR', ROOT / 'data'))
 DEMO = os.environ.get('IRC_DEMO', '0') == '1'
 SECURE = os.environ.get('IRC_SECURE_COOKIE', '0') == '1'
 STATES = ['草稿', '待审核', '退回补充', '已完成']
-DECISIONS = ['待审核','租客责任','原有问题','合理损耗','维修跟进','证据不足']
+DECISIONS = ['待审核','租客责任','原有问题','合理损耗','房东责任','维修跟进','证据不足']
 
 def connect():
     c = sqlite3.connect(DATA / 'app.sqlite3', timeout=20)
@@ -412,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
             for key in ('item_en', 'area_en', 'cm_en'):
                 value = i.get(key, '')
                 if not isinstance(value, str) or len(value) > 10000:
-                    raise APIError(400, '定损报告英文内容格式不正确')
+                    raise APIError(400, '查房报告英文内容格式不正确')
             for side in ['before','after']:
                 if not isinstance(i.get(side),list) or len(i[side])>50:raise APIError(400,'每侧最多50张照片')
                 for url in i[side]:
