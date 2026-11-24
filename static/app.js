@@ -413,6 +413,109 @@ function englishReportItems(items) {
     return translated;
 }
 
+function paginateReport(document, english) {
+    const style = document.createElement('style');
+    style.textContent = `
+        @page{size:A4;margin:0}
+        html,body{margin:0;max-width:none;background:#e9edeb}
+        .toolbar{max-width:182mm;margin:18px auto}
+        .report-sheet{box-sizing:border-box;width:210mm;height:297mm;padding:14mm;position:relative;background:white;margin:18px auto;box-shadow:0 2px 12px #0002}
+        .report-sheet-content{height:269mm;display:flow-root;overflow:visible}
+        .report-sheet-content>div:not(.pair){display:flow-root}
+        .report-sheet-content h1{margin:0 0 12px;font-size:23px}
+        .report-sheet-content h2{margin:8px 0;font-size:17px}
+        .report-sheet-content p{margin:8px 0;line-height:1.5;overflow-wrap:anywhere}
+        .report-sheet-content h4{margin:12px 0 6px;font-size:14px}
+        .report-sheet-content .report-area{margin:9px 0}
+        .report-sheet-content .pair{margin:10px 0;gap:12px}
+        .report-sheet-content .pair img{height:65mm;max-height:65mm;width:100%;object-fit:contain}
+        .report-sheet-content .pair h3{font-size:12px}
+        .report-page-number{position:absolute;bottom:6mm;left:14mm;right:14mm;text-align:right;font-size:10px;color:#718178}
+        @media print{html,body{background:white}.toolbar{display:none}.report-sheet{margin:0;box-shadow:none;break-after:page;break-inside:avoid}.report-sheet:last-child{break-after:auto}}
+    `;
+    document.head.append(style);
+    const toolbar = document.querySelector('.toolbar');
+    const intro = document.createElement('div');
+    for (const node of [...document.body.children]) {
+        if (node === toolbar) continue;
+        if (node.matches('.report-region')) break;
+        intro.append(node);
+    }
+    const regions = [...document.querySelectorAll('.report-region')];
+    const tail = regions.length ? [...document.body.children].slice([...document.body.children].indexOf(regions.at(-1))+1) : [];
+    const pages = [];
+    let content;
+    function newPage(heading) {
+        const sheet = document.createElement('section');
+        sheet.className = 'report-sheet';
+        content = document.createElement('div');
+        content.className = 'report-sheet-content';
+        sheet.append(content);
+        document.body.append(sheet);
+        pages.push(sheet);
+        if (heading) content.append(heading.cloneNode(true));
+    }
+    function append(block, heading) {
+        content.append(block);
+        if (content.scrollHeight > content.clientHeight + 1) {
+            block.remove();
+            newPage(heading);
+            content.append(block);
+        }
+    }
+    newPage();
+    append(intro);
+    regions.forEach((region, regionIndex) => {
+        if (regionIndex) newPage();
+        const heading = document.createElement('div');
+        heading.className = 'region-heading';
+        for (const child of [...region.children]) if (child.matches('h2,h3')) heading.append(child);
+        let first = true;
+        for (const article of [...region.querySelectorAll('article')]) {
+            const summary = article.querySelector('.issue-summary');
+            // Bound paragraph sizes so long internal notes can flow across pages.
+            for (const paragraph of [...summary.querySelectorAll('p')]) {
+                if (paragraph.textContent.length <= 600) continue;
+                const text = paragraph.textContent;
+                const fragments = document.createDocumentFragment();
+                for (let offset=0; offset<text.length; offset+=600) {
+                    const part = document.createElement('p');
+                    part.textContent = text.slice(offset,offset+600);
+                    fragments.append(part);
+                }
+                paragraph.replaceWith(fragments);
+            }
+            const rows = [...article.querySelectorAll('.pair')];
+            const firstBlock = document.createElement('div');
+            if (first) firstBlock.append(heading.cloneNode(true));
+            firstBlock.append(summary);
+            if (rows.length) firstBlock.append(rows.shift());
+            const fitsPage = firstBlock.textContent.length < 1400;
+            if (fitsPage) append(firstBlock, first?undefined:heading);
+            else {
+                if (first) append(heading.cloneNode(true));
+                for (const child of [...summary.children]) {
+                    const block = document.createElement('div');
+                    block.append(child);
+                    append(block,heading);
+                }
+                for (const row of [...firstBlock.querySelectorAll('.pair')]) append(row,heading);
+            }
+            for (const row of rows) append(row,heading);
+            for (const child of [...article.children]) if (child !== summary && child.matches('p')) append(child,heading);
+            first = false;
+        }
+        region.remove();
+    });
+    for (const node of tail) append(node);
+    for (const [index,sheet] of pages.entries()) {
+        const footer = document.createElement('div');
+        footer.className = 'report-page-number';
+        footer.textContent = english ? 'Page '+(index+1)+' of '+pages.length : '第 '+(index+1)+' 页 / 共 '+pages.length+' 页';
+        sheet.append(footer);
+    }
+}
+
 async function exportReport(mode) {
     const full = mode === 'full';
     const english = interfaceLanguage === 'en';
@@ -527,6 +630,8 @@ async function exportReport(mode) {
                 image.onerror = () => reject(Error('报告图片载入失败，请重新生成'));
             }
         })));
+        await preview.document.fonts.ready;
+        paginateReport(preview.document, english);
         preview.document.title = (english ? 'Ready · ' : '已生成 · ') + title;
         preview.document.getElementById('reportStatus').textContent = english
             ? 'Report ready. Click Print / Save as PDF when you return.'
