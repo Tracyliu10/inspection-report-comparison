@@ -13,6 +13,20 @@ DEMO = os.environ.get('IRC_DEMO', '0') == '1'
 SECURE = os.environ.get('IRC_SECURE_COOKIE', '0') == '1'
 STATES = ['草稿', '待审核', '退回补充', '已完成']
 DECISIONS = ['待审核','租客责任','原有问题','合理损耗','房东责任','维修跟进','证据不足']
+DECISION_ALIASES = {
+    '待審核': '待审核', '租客責任': '租客责任', '原有問題': '原有问题',
+    '合理損耗': '合理损耗', '房東責任': '房东责任', '維修跟進': '维修跟进', '證據不足': '证据不足',
+    'Awaiting review': '待审核', 'Tenant responsibility': '租客责任',
+    'Pre-existing issue': '原有问题', 'Fair wear and tear': '合理损耗',
+    'Landlord responsibility': '房东责任', 'Maintenance follow-up': '维修跟进',
+    'Insufficient evidence': '证据不足',
+}
+
+def normalize_decision(value):
+    if not isinstance(value, str):
+        return value
+    return DECISION_ALIASES.get(value.strip(), value.strip())
+
 
 def connect():
     c = sqlite3.connect(DATA / 'app.sqlite3', timeout=20)
@@ -66,7 +80,10 @@ def audit(c, case_id, uid, event, detail=''):
     c.execute('INSERT INTO audit(case_id,user_id,event,detail,created) VALUES(?,?,?,?,?)',(case_id,uid,event,detail,time.time()))
 
 def case_json(r):
-    d=dict(r);d['items']=json.loads(d['items']);return d
+    d=dict(r);d['items']=json.loads(d['items'])
+    for item in d['items']:
+        item['decision'] = normalize_decision(item.get('decision', ''))
+    return d
 
 class APIError(Exception):
     def __init__(self,code,message): self.code,self.message=code,message
@@ -347,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
                         if r['status']=='已完成':raise APIError(400,'案件已完成，须由CM重新打开后编辑')
                         if u['role']=='junior' and r['status'] not in ['草稿','退回补充']:raise APIError(403,'案件已提交，等待CM审核或退回')
                         items=self.validate_items(c,cid,b.get('items'))
-                        old={i['id']:i for i in json.loads(r['items'])}
+                        old={i['id']:i for i in case_json(r)['items']}
                         if u['role']=='junior':
                             protected=['decision','cm','amount','cm_choice','cm_note','item_en','area_en','cm_en']
                             for i in items:
@@ -365,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
                         self.bump(c,cid);audit(c,cid,u['id'],'上传照片',mid);c.commit()
                         return self.output(201,{'url':'/api/media/'+mid,'version':r['version']+1})
                     elif action=='transition':
-                        target=b.get('target');items=json.loads(r['items'])
+                        target=b.get('target');items=case_json(r)['items']
                         if target=='待审核':
                             if u['role']!='junior':raise APIError(403,'仅负责Junior CM可提交CM审核')
                             if r['status'] not in ['草稿','退回补充']:raise APIError(400,'当前状态不能提交')
@@ -402,12 +419,14 @@ class Handler(BaseHTTPRequestHandler):
     def validate_items(self,c,cid,items):
         if not isinstance(items,list) or len(items)>300:raise APIError(400,'项目列表无效或超过300项')
         ids=set()
-        for i in items:
+        for index, i in enumerate(items, 1):
             if not isinstance(i,dict) or not isinstance(i.get('id'),str) or not re.fullmatch(r'[\w-]{1,80}',i['id']) or i['id'] in ids:raise APIError(400,'项目ID无效或重复')
             ids.add(i['id'])
             for k in ['area','item','kind','description','junior','finding','decision','cm','amount']:
                 if not isinstance(i.get(k),str) or len(i[k])>10000:raise APIError(400,'项目字段格式不正确')
-            if i['decision'] not in DECISIONS:raise APIError(400,'审核决定无效')
+            i['decision'] = normalize_decision(i['decision'])
+            if i['decision'] not in DECISIONS:
+                raise APIError(400, f'项目{index}（{i["area"]} / {i["item"]}）审核决定无效：{i["decision"]}。请重新选择审核决定')
             if i['amount'] and (not re.fullmatch(r'\d+(?:\.\d{1,2})?',i['amount']) or float(i['amount'])>10000000):raise APIError(400,'金额须为有效非负金额，最多两位小数')
             for key in ('item_en', 'area_en', 'cm_en'):
                 value = i.get(key, '')
