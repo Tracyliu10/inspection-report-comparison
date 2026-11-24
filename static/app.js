@@ -428,12 +428,12 @@ async function exportReport(mode) {
             ? {current:'Current inspection', previous:'Previous inspection', currentPair:'Current · matched angle', previousPair:'Previous · matched angle', currentOther:'Other current photos', previousOther:'Other previous photos', noCurrent:'No current photo provided', noPrevious:'No previous photo of the same location provided', print:'Print / Save as PDF'}
             : {current:'本次', previous:'之前', currentPair:'本次 · 已配对角度', previousPair:'之前 · 已配对角度', currentOther:'本次其他照片', previousOther:'之前其他照片', noCurrent:'未提供本次照片', noPrevious:'未提供之前同位置照片', print:'打印 / 另存为PDF'};
         let text = `<!doctype html><html lang="${english?'en':'zh-CN'}"><meta charset="utf-8"><title>${title}</title>
-            <style>@page{size:A4;margin:14mm}body{font:14px system-ui;max-width:1000px;margin:25px auto;color:#243d31}article{border-bottom:1px solid #ccc;padding:15px 0}p{white-space:pre-wrap}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.pair img{width:100%;max-height:300px;object-fit:contain}h3{font-size:14px}.report-category{background:#edf4ef;padding:8px 12px;border-left:4px solid #2e6f56}.report-area{font-size:16px;border-bottom:1px solid #cbdad1;padding-bottom:5px}article h4{margin:0 0 8px;font-size:14px}.report-category,.report-area,article h4{break-after:avoid}@media print{.toolbar{display:none}body{margin:0}.pair{break-inside:avoid}}</style>
-            <div class="toolbar"><button onclick="window.print()">${labels.print}</button></div>
+            <style>@page{size:A4;margin:14mm}body{font:14px system-ui;max-width:1000px;margin:25px auto;color:#243d31}article{border-bottom:1px solid #ccc;padding:15px 0}p{white-space:pre-wrap}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.pair img{width:100%;max-height:300px;object-fit:contain}h3{font-size:14px}.report-category{background:#edf4ef;padding:8px 12px;border-left:4px solid #2e6f56}.report-area{font-size:16px;border-bottom:1px solid #cbdad1;padding-bottom:5px}article h4{margin:0 0 8px;font-size:14px}.report-category,.report-area,article h4{break-after:avoid}.issue-summary{break-inside:avoid;break-after:avoid}.pair{margin:10px 0}.pair section{min-width:0}.pair h3{margin:0 0 8px}@media print{.toolbar{display:none}body{margin:0}.report-region+.report-region{break-before:page}.report-region{break-inside:auto}.pair{break-inside:avoid;page-break-inside:avoid}.pair img{max-height:78mm}.report-region article{break-inside:auto}}</style>
+            <div class="toolbar"><p id="reportStatus" role="status">${english?'Loading report images…':'正在载入报告图片…'}</p><button id="printReport" disabled onclick="window.print()">${labels.print}</button></div>
             <h1>${title}</h1><h2>${esc(record.address)}</h2>
             <p>${labels.current}: ${esc(record.current)} · ${labels.previous}: ${esc(record.previous)}</p>`;
 
-        async function photo(url) {
+        async function loadPhoto(url) {
             const response = await fetch(url);
             if (!response.ok) throw Error('照片加载失败，不能生成完整报告');
             const blob = await response.blob();
@@ -445,13 +445,40 @@ async function exportReport(mode) {
             });
         }
 
-        const groups = full ? [[null, new Map([[null, items]])]] : groupDamageReportItems(items);
+        const photoUrls = [...new Set(items.flatMap(item => [...item.after, ...item.before]))];
+        const photos = new Map();
+        let nextPhoto = 0;
+        let finishedPhotos = 0;
+        const progress = preview.document.querySelector('p');
+        async function preparePhotos() {
+            while (nextPhoto < photoUrls.length) {
+                if (preview.closed) throw Error('报告窗口已关闭，请重新生成');
+                const url = photoUrls[nextPhoto++];
+                photos.set(url, await loadPhoto(url));
+                finishedPhotos++;
+                if (progress) progress.textContent = english
+                    ? 'Preparing photos '+finishedPhotos+' / '+photoUrls.length+'. You can work in another tab.'
+                    : '正在准备照片 '+finishedPhotos+' / '+photoUrls.length+'，您可以切换到其他网页工作。';
+            }
+        }
+        await Promise.all(Array.from({length: Math.min(4, photoUrls.length)}, preparePhotos));
+        function photo(url) { return photos.get(url); }
+
+        const allAreas = new Map();
+        if (full) for (const item of items) {
+            if (!allAreas.has(item.area)) allAreas.set(item.area, []);
+            allAreas.get(item.area).push(item);
+        }
+        const groups = full ? [[null, allAreas]] : groupDamageReportItems(items);
         for (const [category, areas] of groups) {
-            if (category) text += '<h2 class="report-category">'+esc(english?englishReportCategories[category]:category)+'</h2>';
+            let firstArea = true;
             for (const [area, entries] of areas) {
+                text += '<section class="report-region">';
+                if (category && firstArea) text += '<h2 class="report-category">'+esc(english?englishReportCategories[category]:category)+'</h2>';
+                firstArea = false;
                 if (area !== null) text += '<h3 class="report-area">'+esc(area)+'</h3>';
                 for (const item of entries) {
-                    text += '<article>'+(full?'<h2>'+esc(item.area+' / '+item.item)+'</h2>':'<h4>'+esc(item.item)+'</h4>');
+                    text += '<article><header class="issue-summary">'+(full?'<h2>'+esc(item.area+' / '+item.item)+'</h2>':'<h4>'+esc(item.item)+'</h4>');
                     if (full) {
                         const headings = english ? ['Issue type', 'Comparison finding', 'Review decision'] : ['类型','比对结论','审核决定'];
                         const details = [item.kind, item.finding, item.decision].map((value, index) =>
@@ -459,6 +486,7 @@ async function exportReport(mode) {
                         text += '<p>'+esc(item.description)+'</p><p>'+details.join(' · ')+'</p><p>'+esc(item.junior)+'</p>';
                     }
                     text += '<p>'+esc(item.cm)+'</p><p>'+esc(item.amount?'AUD '+item.amount:'')+'</p>';
+                    text += '</header>';
                     const used = {after:new Set(),before:new Set()};
                     for (const pair of item.photo_pairs || []) {
                         if (!item.after.includes(pair.after) || !item.before.includes(pair.before)) continue;
@@ -466,26 +494,50 @@ async function exportReport(mode) {
                         used.before.add(pair.before);
                         text += '<div class="pair"><section><h3>'+labels.currentPair+'</h3>'+await photo(pair.after)+'</section><section><h3>'+labels.previousPair+'</h3>'+await photo(pair.before)+'</section></div>';
                     }
-                    text += '<div class="pair">';
-                    for (const side of ['after','before']) {
-                        text += '<section><h3>'+(side==='after'?labels.currentOther:labels.previousOther)+'</h3>';
-                        if (!item[side].length) text += '<p>'+(side==='after'?labels.noCurrent:labels.noPrevious)+'</p>';
-                        for (const url of item[side]) if (!used[side].has(url)) text += await photo(url);
-                        text += '</section>';
+                    const remainingAfter = item.after.filter(url => !used.after.has(url));
+                    const remainingBefore = item.before.filter(url => !used.before.has(url));
+                    const rowCount = Math.max(remainingAfter.length, remainingBefore.length);
+                    for (let row = 0; row < rowCount; row++) {
+                        text += '<div class="pair">';
+                        for (const [side, urls] of [['after', remainingAfter], ['before', remainingBefore]]) {
+                            text += '<section><h3>'+(side==='after'?labels.currentOther:labels.previousOther)+'</h3>';
+                            if (urls[row]) text += photo(urls[row]);
+                            else if (row === 0 && !item[side].length) text += '<p>'+(side==='after'?labels.noCurrent:labels.noPrevious)+'</p>';
+                            text += '</section>';
+                        }
+                        text += '</div>';
                     }
-                    text += '</div></article>';
+                    if (!item.after.length && !item.before.length) text += '<p>'+labels.noCurrent+' · '+labels.noPrevious+'</p>';
+                    text += '</article>';
                 }
+                text += '</section>';
             }
         }
         if (full) text += '<p>'+(english?'Archive ID: ':'归档编号：')+esc(record.archive_token)+(english?' · Case version: ':' · 案件版本：')+record.version+'</p>';
         preview.document.open();
         preview.document.write(text);
         preview.document.close();
-        await Promise.all([...preview.document.images].map(img=>img.decode()));
-        preview.focus();
-        preview.print();
+        // Image.decode() can remain pending in background tabs. Load events also
+        // work when the report is hidden and do not require a rendering frame.
+        await Promise.all([...preview.document.images].map(image => new Promise((resolve, reject) => {
+            const loaded = () => image.naturalWidth ? resolve() : reject(Error('报告图片载入失败，请重新生成'));
+            if (image.complete) loaded();
+            else {
+                image.onload = loaded;
+                image.onerror = () => reject(Error('报告图片载入失败，请重新生成'));
+            }
+        })));
+        preview.document.title = (english ? 'Ready · ' : '已生成 · ') + title;
+        preview.document.getElementById('reportStatus').textContent = english
+            ? 'Report ready. Click Print / Save as PDF when you return.'
+            : '报告已生成，返回后点击「打印 / 另存为PDF」即可保存。';
+        preview.document.getElementById('printReport').disabled = false;
     } catch (err) {
-        preview.close();
+        if (!preview.closed) {
+            preview.document.open();
+            preview.document.write('<meta charset="utf-8"><h1>'+(english?'Report generation failed':'报告生成失败')+'</h1><p>'+esc(err.message)+'</p>');
+            preview.document.close();
+        }
         error(err);
     }
 }
